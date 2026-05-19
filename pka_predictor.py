@@ -52,6 +52,11 @@ class PkaPredictor:
         features = self._extract_features(smiles)
         if features is None:
             return "Invalid structure"
+        # Ignore the feature name warning during prediction
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=UserWarning)
+            prediction = self.model.predict([features])[0]
+            
         return round(float(self.model.predict([features])[0]), 2)
         
     def predict_batch(self, smiles_list):
