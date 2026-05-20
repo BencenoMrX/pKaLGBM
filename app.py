@@ -6,7 +6,6 @@ from rdkit.Chem import AllChem
 from rdkit.Geometry import Point3D
 import streamlit.components.v1 as components
 import py3Dmol
-import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
 
