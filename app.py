@@ -1,176 +1,171 @@
 ﻿import streamlit as st
-import pandas as pd
-import ast
+import numpy as np
 from rdkit import Chem
 from rdkit.Chem import AllChem
-from rdkit.Geometry import Point3D
 import streamlit.components.v1 as components
 import py3Dmol
 
-# --- 1. App Configuration ---
+# --- 1. Import Your Custom Predictor Class ---
+# This looks for the pka_predictor.py file inside your GitHub repository
+from pka_predictor import PkaPredictor
+
+# --- 2. App Configuration & Layout ---
 st.set_page_config(page_title="Crystal 3D Surface Explorer", layout="wide")
-st.title("🧬 Acid-Base 3D Surface Mapper")
+st.title("🧬 Multi-Component Crystal Engineering Suite")
+st.markdown("Instantly predict $pK_a$ values and visualize 3D electrostatic surface maps.")
 
-# --- 2. Load Database (Cached for Speed) ---
-@st.cache_data
-def load_database():
-    url = "https://raw.githubusercontent.com/BencenoMrX/pKaLGBM/main/joint_database.csv.gz"
+# --- 3. Initialize the ML Model (Cached) ---
+@st.cache_resource
+def init_predictor():
     try:
-        df = pd.read_csv(url, compression='gzip')
-        return df
+        # Assumes pka_lightgbm_model.pkl is in the same repo directory
+        return PkaPredictor(model_path='pka_lightgbm_model.pkl')
     except Exception as e:
-        st.error(f"Error loading database: {e}")
-        return pd.DataFrame()
+        st.error(f"Error loading pKa model weights: {e}")
+        return None
 
-df_joint = load_database()
+predictor = init_predictor()
 
-# --- 3. Cheminformatics Engine ---
+# --- 4. Color Grading Engine ---
 def charge_to_hex(charge):
-    """
-    Lightweight color interpolator mimicking 'coolwarm_r'.
-    Maps charges from -0.3 (Deep Red, Basic) to +0.3 (Deep Blue, Acidic).
-    """
-    # Clip charge between our expected limits
+    """Maps charges from -0.3 (Deep Red, Basic) to +0.3 (Deep Blue, Acidic)."""
     c = max(-0.3, min(0.3, charge))
-    
-    # Normalize c to a scale of -1.0 to 1.0
     val = c / 0.3  
     
     if val < 0:
-        # Negative charge: Interpolate between White (255, 255, 255) and Red (255, 0, 0)
-        # val goes from -1.0 (pure red) to 0.0 (white)
-        factor = 1.0 + val  # -1.0 -> 0.0 (Pure Red), 0.0 -> 1.0 (White)
-        r = 255
-        g = int(255 * factor)
-        b = int(255 * factor)
+        factor = 1.0 + val  
+        r, g, b = 255, int(255 * factor), int(255 * factor)
     else:
-        # Positive charge: Interpolate between White (255, 255, 255) and Blue (0, 0, 255)
-        # val goes from 0.0 (white) to 1.0 (pure blue)
-        factor = 1.0 - val  # 0.0 -> 1.0 (White), 1.0 -> 0.0 (Pure Blue)
-        r = int(255 * factor)
-        g = int(255 * factor)
-        b = 255
+        factor = 1.0 - val  
+        r, g, b = int(255 * factor), int(255 * factor), 255
         
     return f"#{r:02x}{g:02x}{b:02x}"
 
-def inject_experimental_coords(mol, coords_string):
-    """Parses raw [(x,y,z)] strings and injects them into an RDKit Mol."""
-    try:
-        coords = ast.literal_eval(coords_string)
-        heavy_atoms = [a for a in mol.GetAtoms() if a.GetAtomicNum() != 1]
-        if len(heavy_atoms) != len(coords):
-            return None
-            
-        conf = Chem.Conformer(mol.GetNumAtoms())
-        conf.Set3D(True)
-        for i, (x, y, z) in enumerate(coords):
-            conf.SetAtomPosition(i, Point3D(x, y, z))
-            
-        mol.AddConformer(conf, assignId=True)
-        return mol
-    except:
-        return None
-
-def build_3d_molecule(smiles, df, use_experimental=True):
-    """Builds a MolBlock and extracts Gasteiger charges as a list."""
+def generate_html_view(smiles):
+    """Generates a standard 3D MolBlock and maps color attributes by atom index."""
     mol = Chem.MolFromSmiles(smiles)
-    if not mol: return None, None
+    if not mol:
+        return None
+        
+    # Generate clean, non-overlapping 3D coordinates using RDKit
+    mol = Chem.AddHs(mol)
+    AllChem.EmbedMolecule(mol, randomSeed=42)
+    AllChem.MMFFOptimizeMolecule(mol)
     
-    success_experimental = False
-    
-    if use_experimental and not df.empty:
-        match = df[(df['smiles1'] == smiles) | (df['smiles2'] == smiles)]
-        if not match.empty:
-            row = match.iloc[0]
-            if row['smiles1'] == smiles:
-                coords_string = row['coordinates1']
-            else:
-                coords_string = row['coordinates2']
-                
-            if pd.notna(coords_string):
-                mol_with_coords = inject_experimental_coords(mol, coords_string)
-                if mol_with_coords:
-                    mol = mol_with_coords
-                    mol = Chem.AddHs(mol, addCoords=True)
-                    success_experimental = True
-                    st.success(f"Loaded Experimental Coordinates for: {smiles}")
-
-    if not success_experimental:
-        mol = Chem.AddHs(mol)
-        AllChem.EmbedMolecule(mol, randomSeed=42)
-        AllChem.MMFFOptimizeMolecule(mol)
-        if use_experimental:
-            st.warning(f"No valid experimental coords found. Generated 3D for: {smiles}")
-        else:
-            st.info(f"Generated RDKit 3D conformation for: {smiles}")
-            
-    # Calculate Gasteiger Charges
+    # Calculate electronic properties
     AllChem.ComputeGasteigerCharges(mol)
-    charges = []
-    for atom in mol.GetAtoms():
+    color_map = {}
+    for i, atom in enumerate(mol.GetAtoms()):
         charge = atom.GetProp('_GasteigerCharge')
-        charges.append(float(charge) if str(charge) != 'nan' else 0.0)
+        charge_val = float(charge) if str(charge) != 'nan' else 0.0
+        color_map[i] = charge_to_hex(charge_val)
         
-    return Chem.MolToMolBlock(mol), charges
-
-def render_3d_surface(mb1, charges1, mb2=None, charges2=None):
-    """Renders the 3D py3Dmol viewer via native custom color indexing maps."""
-    view = py3Dmol.view(width=800, height=500)
+    mb = Chem.MolToMolBlock(mol)
     
-    # Render Molecule 1
-    view.addModel(mb1, 'sdf')
-    color_map1 = {i: charge_to_hex(c) for i, c in enumerate(charges1)}
-    view.setStyle({'model': 0}, {'stick': {'radius': 0.15}})
-    view.addSurface(py3Dmol.VDW, 
-                    {'opacity': 0.8, 'colorscheme': {'prop': 'index', 'map': color_map1}}, 
-                    {'model': 0})
-    
-    # Render Molecule 2 if it exists
-    if mb2 and charges2:
-        view.addModel(mb2, 'sdf')
-        color_map2 = {i: charge_to_hex(c) for i, c in enumerate(charges2)}
-        view.setStyle({'model': 1}, {'stick': {'radius': 0.15}})
-        view.addSurface(py3Dmol.VDW, 
-                        {'opacity': 0.8, 'colorscheme': {'prop': 'index', 'map': color_map2}}, 
-                        {'model': 1})
-        
+    # Construct the isolated 3D View
+    view = py3Dmol.view(width=550, height=450)
+    view.addModel(mb, 'sdf')
+    view.setStyle({'stick': {'radius': 0.15}, 'sphere': {'radius': 0.25}})
+    view.addSurface(py3Dmol.VDW, {
+        'opacity': 0.85, 
+        'colorscheme': {'prop': 'index', 'map': color_map}
+    })
     view.zoomTo()
-    return view
-
-# --- 4. Streamlit UI Layout ---
-col1, col2 = st.columns([1, 2])
-
-with col1:
-    st.subheader("Input Molecules")
-    mode = st.radio("Select Mode:", ["Single Molecule", "Molecule Pair (Cocrystal)"])
-    use_experimental = st.toggle("Use Experimental Coordinates (if available)", value=True)
     
-    smiles1 = st.text_input("SMILES 1", value="C1=CC=C(C=C1)C(=O)O") 
-    smiles2 = ""
-    if mode == "Molecule Pair (Cocrystal)":
-        smiles2 = st.text_input("SMILES 2", value="C1=CC=NC=C1")
-        
-    generate_btn = st.button("Generate 3D Surface", type="primary")
+    # Wrap with the vital 3Dmol Javascript engine script for desktop browser display
+    html_code = f"""
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/3Dmol/2.0.1/3Dmol-min.js"></script>
+    <div style="width: 100%; height: 450px;">
+        {view._make_html()}
+    </div>
+    """
+    return html_code
 
-with col2:
-    if generate_btn:
-        with st.spinner("Processing 3D structures and electrostatic mapping..."):
-            mb1, charges1 = build_3d_molecule(smiles1, df_joint, use_experimental)
+# --- 5. Custom Color Bar Component ---
+def display_color_scale():
+    """Generates a native CSS colorbar legend mimicking the charge spectrum."""
+    st.markdown("### 🎨 Charge Distribution Scale")
+    st.markdown(
+        """
+        <div style="display: flex; flex-direction: column; width: 100%; max-width: 500px; margin-bottom: 20px;">
+            <div style="height: 25px; background: linear-gradient(to right, #ff0000, #ffffff, #0000ff); border-radius: 4px; border: 1px solid #ccc;"></div>
+            <div style="display: flex; justify-content: space-between; font-size: 13px; margin-top: 5px; font-weight: 500;">
+                <span style="color: #d32f2f;">🔴 Basic (-0.3) <br><small>Proton Acceptor / Lone Pairs</small></span>
+                <span style="color: #777;">Neutral (0.0)</span>
+                <span style="color: #1976d2; text-align: right;">🔵 Acidic (+0.3) <br><small>Proton Donor / Acidic H</small></span>
+            </div>
+        </div>
+        """, 
+        unsafe_allow_html=True
+    )
+
+# --- 6. Interface Assembly ---
+# Left Sidebar for controls, Right panel for dynamic visualization windows
+sidebar, display_panel = st.columns([1, 3])
+
+with sidebar:
+    st.subheader("Configuration Options")
+    mode = st.radio("System Framework:", ["Single Molecule", "Cocrystal Pair"])
+    
+    smiles_input1 = st.text_input("SMILES Structure 1", value="C1=CC=C(C=C1)C(=O)O")
+    smiles_input2 = ""
+    if mode == "Cocrystal Pair":
+        smiles_input2 = st.text_input("SMILES Structure 2", value="C1=CC=NC=C1")
+        
+    run_btn = st.button("Process System", type="primary")
+
+with display_panel:
+    if run_btn:
+        # Validate entry 1
+        m1_test = Chem.MolFromSmiles(smiles_input1)
+        if not m1_test:
+            st.error(f"❌ Structural parser failed. Please verify SMILES 1 string format.")
+        
+        # Validate entry 2 if in pair mode
+        m2_test = None
+        if mode == "Cocrystal Pair":
+            m2_test = Chem.MolFromSmiles(smiles_input2)
+            if not m2_test:
+                st.error(f"❌ Structural parser failed. Please verify SMILES 2 string format.")
+
+        # Process when inputs are validated
+        if m1_test and (mode == "Single Molecule" or m2_test):
+            display_color_scale()
             
-            if mode == "Molecule Pair (Cocrystal)" and smiles2:
-                mb2, charges2 = build_3d_molecule(smiles2, df_joint, use_experimental)
-                if mb1 and mb2:
-                    view = render_3d_surface(mb1, charges1, mb2, charges2)
-                    html_code = f"""
-                    <script src="https://cdnjs.cloudflare.com/ajax/libs/3Dmol/2.0.1/3Dmol-min.js"></script>
-                    {view._make_html()}
-                    """
-                    components.html(html_code, height=500, width=800, scrolling=False)
+            # --- Scenario A: Single Molecule Execution ---
+            if mode == "Single Molecule":
+                st.subheader("System Mapping Output")
+                
+                # Predict value using LightGBM pipeline
+                pka_val = predictor.predict(smiles_input1) if predictor else "N/A"
+                st.metric(label="Predicted Target $pK_a$", value=pka_val)
+                
+                # Render standalone window
+                html_out = generate_html_view(smiles_input1)
+                if html_out:
+                    components.html(html_code=html_out, height=460, scrolling=False)
+            
+            # --- Scenario B: Pair Execution (Side-by-Side Windows) ---
             else:
-                if mb1:
-                    view = render_3d_surface(mb1, charges1)
-                    html_code = f"""
-                    <script src="https://cdnjs.cloudflare.com/ajax/libs/3Dmol/2.0.1/3Dmol-min.js"></script>
-                    {view._make_html()}
-                    """
-                    components.html(html_code, height=500, width=800, scrolling=False)
+                st.subheader("System Mapping Output")
+                
+                # Compute predictions for both structures
+                pka_1 = predictor.predict(smiles_input1) if predictor else "N/A"
+                pka_2 = predictor.predict(smiles_input2) if predictor else "N/A"
+                
+                # Establish dynamic window partition columns
+                win_col1, win_col2 = st.columns(2)
+                
+                with win_col1:
+                    st.markdown("#### Component A Structure")
+                    st.metric(label="Component A Predicted $pK_a$", value=pka_1)
+                    html_out1 = generate_html_view(smiles_input1)
+                    if html_out1:
+                        components.html(html_code=html_out1, height=460, scrolling=False)
+                        
+                with win_col2:
+                    st.markdown("#### Component B Structure")
+                    st.metric(label="Component B Predicted $pK_a$", value=pka_2)
+                    html_out2 = generate_html_view(smiles_input2)
+                    if html_out2:
+                        components.html(html_code=html_out2, height=460, scrolling=False)
