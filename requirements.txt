@@ -4,3 +4,4 @@ py3Dmol
 pandas
 joblib
 lightgbm
+scikit-learn
