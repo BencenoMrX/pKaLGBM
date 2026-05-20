@@ -59,7 +59,7 @@ def build_3d_molecule(smiles, df, use_experimental=True):
     success_experimental = False
     
     # Try to find and apply experimental coordinates
-     if use_experimental and not df.empty:
+    if use_experimental and not df.empty:
         # Find the row where the SMILES matches either column 1 or 2
         match = df[(df['smiles1'] == smiles) | (df['smiles2'] == smiles)]
         
