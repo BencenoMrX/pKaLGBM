@@ -6,8 +6,6 @@ from rdkit.Chem import AllChem
 from rdkit.Geometry import Point3D
 import streamlit.components.v1 as components
 import py3Dmol
-import matplotlib.cm as cm
-import matplotlib.colors as mcolors
 
 # --- 1. App Configuration ---
 st.set_page_config(page_title="Crystal 3D Surface Explorer", layout="wide")
@@ -27,6 +25,34 @@ def load_database():
 df_joint = load_database()
 
 # --- 3. Cheminformatics Engine ---
+def charge_to_hex(charge):
+    """
+    Lightweight color interpolator mimicking 'coolwarm_r'.
+    Maps charges from -0.3 (Deep Red, Basic) to +0.3 (Deep Blue, Acidic).
+    """
+    # Clip charge between our expected limits
+    c = max(-0.3, min(0.3, charge))
+    
+    # Normalize c to a scale of -1.0 to 1.0
+    val = c / 0.3  
+    
+    if val < 0:
+        # Negative charge: Interpolate between White (255, 255, 255) and Red (255, 0, 0)
+        # val goes from -1.0 (pure red) to 0.0 (white)
+        factor = 1.0 + val  # -1.0 -> 0.0 (Pure Red), 0.0 -> 1.0 (White)
+        r = 255
+        g = int(255 * factor)
+        b = int(255 * factor)
+    else:
+        # Positive charge: Interpolate between White (255, 255, 255) and Blue (0, 0, 255)
+        # val goes from 0.0 (white) to 1.0 (pure blue)
+        factor = 1.0 - val  # 0.0 -> 1.0 (White), 1.0 -> 0.0 (Pure Blue)
+        r = int(255 * factor)
+        g = int(255 * factor)
+        b = 255
+        
+    return f"#{r:02x}{g:02x}{b:02x}"
+
 def inject_experimental_coords(mol, coords_string):
     """Parses raw [(x,y,z)] strings and injects them into an RDKit Mol."""
     try:
@@ -78,28 +104,22 @@ def build_3d_molecule(smiles, df, use_experimental=True):
         else:
             st.info(f"Generated RDKit 3D conformation for: {smiles}")
             
-    # Calculate Charges
+    # Calculate Gasteiger Charges
     AllChem.ComputeGasteigerCharges(mol)
     charges = []
     for atom in mol.GetAtoms():
         charge = atom.GetProp('_GasteigerCharge')
         charges.append(float(charge) if str(charge) != 'nan' else 0.0)
         
-    # Return standard MolBlock instead of PDB
     return Chem.MolToMolBlock(mol), charges
 
 def render_3d_surface(mb1, charges1, mb2=None, charges2=None):
-    """Renders the 3D py3Dmol viewer using Matplotlib colormaps."""
+    """Renders the 3D py3Dmol viewer via native custom color indexing maps."""
     view = py3Dmol.view(width=800, height=500)
-    
-    # We use bwr_r (Blue-White-Red reversed) so Negative (-0.3) is Red, Positive (+0.3) is Blue
-    cmap = cm.get_cmap('bwr_r')
-    norm = mcolors.Normalize(vmin=-0.3, vmax=0.3)
     
     # Render Molecule 1
     view.addModel(mb1, 'sdf')
-    color_map1 = {i: mcolors.to_hex(cmap(norm(c))) for i, c in enumerate(charges1)}
-    
+    color_map1 = {i: charge_to_hex(c) for i, c in enumerate(charges1)}
     view.setStyle({'model': 0}, {'stick': {'radius': 0.15}})
     view.addSurface(py3Dmol.VDW, 
                     {'opacity': 0.8, 'colorscheme': {'prop': 'index', 'map': color_map1}}, 
@@ -108,8 +128,7 @@ def render_3d_surface(mb1, charges1, mb2=None, charges2=None):
     # Render Molecule 2 if it exists
     if mb2 and charges2:
         view.addModel(mb2, 'sdf')
-        color_map2 = {i: mcolors.to_hex(cmap(norm(c))) for i, c in enumerate(charges2)}
-        
+        color_map2 = {i: charge_to_hex(c) for i, c in enumerate(charges2)}
         view.setStyle({'model': 1}, {'stick': {'radius': 0.15}})
         view.addSurface(py3Dmol.VDW, 
                         {'opacity': 0.8, 'colorscheme': {'prop': 'index', 'map': color_map2}}, 
@@ -142,8 +161,16 @@ with col2:
                 mb2, charges2 = build_3d_molecule(smiles2, df_joint, use_experimental)
                 if mb1 and mb2:
                     view = render_3d_surface(mb1, charges1, mb2, charges2)
-                    components.html(view._make_html(), height=500, width=800, scrolling=False)
+                    html_code = f"""
+                    <script src="https://cdnjs.cloudflare.com/ajax/libs/3Dmol/2.0.1/3Dmol-min.js"></script>
+                    {view._make_html()}
+                    """
+                    components.html(html_code, height=500, width=800, scrolling=False)
             else:
                 if mb1:
                     view = render_3d_surface(mb1, charges1)
-                    components.html(view._make_html(), height=500, width=800, scrolling=False)
+                    html_code = f"""
+                    <script src="https://cdnjs.cloudflare.com/ajax/libs/3Dmol/2.0.1/3Dmol-min.js"></script>
+                    {view._make_html()}
+                    """
+                    components.html(html_code, height=500, width=800, scrolling=False)
