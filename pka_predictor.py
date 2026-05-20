@@ -2,18 +2,18 @@
 import os
 import joblib
 import numpy as np
+import warnings  # <-- FIXED: Moved to the top level import scope
 from rdkit import Chem
 from rdkit.Chem import AllChem, Descriptors, rdFingerprintGenerator
 
 class PkaPredictor:
     def __init__(self, model_path='pka_lightgbm_model.pkl'):
-        # Loads model
         if not os.path.exists(model_path):
             raise FileNotFoundError(f"Model file not found at {model_path}")
         
         self.model = joblib.load(model_path)
         
-        # Initialize the Morgan generator once, using new Morgan rdkit code
+        # Initialize the Morgan generator once for the entire class to speed up batch processing
         self.morgan_gen = rdFingerprintGenerator.GetMorganGenerator(radius=2, fpSize=1024)
         
     def _extract_features(self, smiles):
@@ -21,12 +21,12 @@ class PkaPredictor:
             mol = Chem.MolFromSmiles(smiles)
             if mol is None: return None
             
-            # 1024-bit Morgan fingerprint
+            # 1. 1024-bit Morgan Fingerprint (Using updated Generator API)
             fp = self.morgan_gen.GetFingerprint(mol)
             fp_arr = np.zeros((1,), dtype=np.float32)
             Chem.DataStructs.ConvertToNumpyArray(fp, fp_arr)
             
-            # 2. Gasteiger charges (partial atomic charges)
+            # 2. Gasteiger Charges
             mol_h = Chem.AddHs(mol)
             AllChem.ComputeGasteigerCharges(mol_h)
             charges = [float(a.GetProp('_GasteigerCharge')) for a in mol_h.GetAtoms() 
@@ -34,7 +34,7 @@ class PkaPredictor:
             max_charge = max(charges) if charges else 0.0
             min_charge = min(charges) if charges else 0.0
             
-            # RDKit Descriptors
+            # 3. All RDKit Descriptors
             rdkit_desc_values = []
             for desc_name, desc_func in Descriptors._descList:
                 try:
@@ -51,13 +51,14 @@ class PkaPredictor:
     def predict(self, smiles):
         features = self._extract_features(smiles)
         if features is None:
-            return "Invalid structure"
-        # Ignore the feature name warning during prediction
+            return "Invalid Structure"
+            
+        # Catch and ignore the feature name warning during prediction
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", category=UserWarning)
             prediction = self.model.predict([features])[0]
             
-        return round(float(self.model.predict([features])[0]), 2)
+        return round(float(prediction), 2)
         
     def predict_batch(self, smiles_list):
         return [self.predict(s) for s in smiles_list]
