@@ -4,7 +4,7 @@ import ast
 from rdkit import Chem
 from rdkit.Chem import AllChem
 from rdkit.Geometry import Point3D
-from stmol import showmol
+import streamlit.components.v1 as components
 import py3Dmol
 
 # --- 1. App Configuration ---
@@ -145,8 +145,8 @@ with col2:
                 pdb2 = build_3d_molecule(smiles2, df_joint, use_experimental)
                 if pdb1 and pdb2:
                     view = render_3d_surface(pdb1, pdb2)
-                    showmol(view, height=500, width=800)
+                    components.html(view._make_html(), height=500, width=800)
             else:
                 if pdb1:
                     view = render_3d_surface(pdb1)
-                    showmol(view, height=500, width=800)
+                    components.html(view._make_html(), height=500, width=800)
