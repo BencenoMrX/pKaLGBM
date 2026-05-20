@@ -23,7 +23,8 @@ def load_database():
     except Exception as e:
         st.error(f"Error loading database: {e}")
         return pd.DataFrame()
-   
+
+df_joint = load_database()
 
 # --- 3. Cheminformatics Engine ---
 def inject_experimental_coords(mol, coords_string):
