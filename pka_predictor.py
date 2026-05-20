@@ -53,10 +53,25 @@ class PkaPredictor:
         if features is None:
             return "Invalid Structure"
             
-        # Catch and ignore the feature name warning during prediction
+        # 1. Convert to a strict 2D numpy array (scikit-learn standard)
+        features_2d = features.reshape(1, -1)
+        
+        # 2. The RDKit Version Trap Fix
+        # Forces the extracted features to match the exact size the model was trained on
+        expected_cols = self.model.n_features_in_
+        actual_cols = features_2d.shape[1]
+        
+        if actual_cols > expected_cols:
+            # If cloud RDKit generated too many descriptors, trim the excess
+            features_2d = features_2d[:, :expected_cols]
+        elif actual_cols < expected_cols:
+            # If cloud RDKit generated too few, pad the end with zeros
+            features_2d = np.pad(features_2d, ((0, 0), (0, expected_cols - actual_cols)))
+            
+        # 3. Predict safely
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", category=UserWarning)
-            prediction = self.model.predict([features])[0]
+            prediction = self.model.predict(features_2d)[0]
             
         return round(float(prediction), 2)
         
