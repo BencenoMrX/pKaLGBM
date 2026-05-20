@@ -2,3 +2,5 @@ streamlit
 rdkit
 py3Dmol
 pandas
+joblib
+lightgbm
