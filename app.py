@@ -143,7 +143,7 @@ with display_panel:
                 # Render standalone window
                 html_out = generate_html_view(smiles_input1)
                 if html_out:
-                    components.html(html_code=html_out, height=460, scrolling=False)
+                    components.html(html_out, height=460, scrolling=False)
             
             # --- Scenario B: Pair Execution (Side-by-Side Windows) ---
             else:
@@ -161,11 +161,11 @@ with display_panel:
                     st.metric(label="Component A Predicted $pK_a$", value=pka_1)
                     html_out1 = generate_html_view(smiles_input1)
                     if html_out1:
-                        components.html(html_code=html_out1, height=460, scrolling=False)
+                        components.html(html_out1, height=460, scrolling=False)
                         
                 with win_col2:
                     st.markdown("#### Component B Structure")
                     st.metric(label="Component B Predicted $pK_a$", value=pka_2)
                     html_out2 = generate_html_view(smiles_input2)
                     if html_out2:
-                        components.html(html_code=html_out2, height=460, scrolling=False)
+                        components.html(html_out2, height=460, scrolling=False)
