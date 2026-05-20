@@ -109,7 +109,7 @@ with sidebar:
     
     smiles_input1 = st.text_input("SMILES structure 1", value="C1=CC=C(C=C1)C(=O)O")
     smiles_input2 = ""
-    if mode == "Cocrystal Pair":
+    if mode == "Cocrystal pair":
         smiles_input2 = st.text_input("SMILES structure 2", value="C1=CC=NC=C1")
         
     run_btn = st.button("Process system", type="primary")
@@ -134,7 +134,7 @@ with display_panel:
             
             # --- Scenario A: Single Molecule Execution ---
             if mode == "Single molecule":
-                st.subheader("System Mapping Output")
+                #st.subheader("System Mapping Output")
                 
                 # Predict value using LightGBM pipeline
                 pka_val = predictor.predict(smiles_input1) if predictor else "N/A"
