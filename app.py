@@ -105,14 +105,14 @@ sidebar, display_panel = st.columns([1, 3])
 
 with sidebar:
     st.subheader("Configuration Options")
-    mode = st.radio("System Framework:", ["Single Molecule", "Cocrystal Pair"])
+    mode = st.radio("System framework:", ["Single molecule", "Cocrystal pair"])
     
-    smiles_input1 = st.text_input("SMILES Structure 1", value="C1=CC=C(C=C1)C(=O)O")
+    smiles_input1 = st.text_input("SMILES structure 1", value="C1=CC=C(C=C1)C(=O)O")
     smiles_input2 = ""
     if mode == "Cocrystal Pair":
-        smiles_input2 = st.text_input("SMILES Structure 2", value="C1=CC=NC=C1")
+        smiles_input2 = st.text_input("SMILES structure 2", value="C1=CC=NC=C1")
         
-    run_btn = st.button("Process System", type="primary")
+    run_btn = st.button("Process system", type="primary")
 
 with display_panel:
     if run_btn:
@@ -123,22 +123,22 @@ with display_panel:
         
         # Validate entry 2 if in pair mode
         m2_test = None
-        if mode == "Cocrystal Pair":
+        if mode == "Cocrystal pair":
             m2_test = Chem.MolFromSmiles(smiles_input2)
             if not m2_test:
                 st.error(f"❌ Structural parser failed. Please verify SMILES 2 string format.")
 
         # Process when inputs are validated
-        if m1_test and (mode == "Single Molecule" or m2_test):
+        if m1_test and (mode == "Single molecule" or m2_test):
             display_color_scale()
             
             # --- Scenario A: Single Molecule Execution ---
-            if mode == "Single Molecule":
+            if mode == "Single molecule":
                 st.subheader("System Mapping Output")
                 
                 # Predict value using LightGBM pipeline
                 pka_val = predictor.predict(smiles_input1) if predictor else "N/A"
-                st.metric(label="Predicted Target $pK_a$", value=pka_val)
+                st.metric(label="Predicted target $pK_a$", value=pka_val)
                 
                 # Render standalone window
                 html_out = generate_html_view(smiles_input1)
@@ -147,7 +147,7 @@ with display_panel:
             
             # --- Scenario B: Pair Execution (Side-by-Side Windows) ---
             else:
-                st.subheader("System Mapping Output")
+                st.subheader("System mapping output")
                 
                 # Compute predictions for both structures
                 pka_1 = predictor.predict(smiles_input1) if predictor else "N/A"
@@ -157,15 +157,15 @@ with display_panel:
                 win_col1, win_col2 = st.columns(2)
                 
                 with win_col1:
-                    st.markdown("#### Component A Structure")
-                    st.metric(label="Component A Predicted $pK_a$", value=pka_1)
+                    st.markdown("#### Component A structure")
+                    st.metric(label="Component A predicted $pK_a$", value=pka_1)
                     html_out1 = generate_html_view(smiles_input1)
                     if html_out1:
                         components.html(html_out1, height=460, scrolling=False)
                         
                 with win_col2:
-                    st.markdown("#### Component B Structure")
-                    st.metric(label="Component B Predicted $pK_a$", value=pka_2)
+                    st.markdown("#### Component B structure")
+                    st.metric(label="Component B predicted $pK_a$", value=pka_2)
                     html_out2 = generate_html_view(smiles_input2)
                     if html_out2:
                         components.html(html_out2, height=460, scrolling=False)
