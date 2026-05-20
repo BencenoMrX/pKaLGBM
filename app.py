@@ -11,8 +11,8 @@ from pka_predictor import PkaPredictor
 
 # --- 2. App Configuration & Layout ---
 st.set_page_config(page_title="Crystal 3D Surface Explorer", layout="wide")
-st.title("🧬 Multi-Component Crystal Engineering Suite")
-st.markdown("Instantly predict $pK_a$ values and visualize 3D electrostatic surface maps.")
+st.title("pKa prediction and molecular visualization")
+st.markdown("Predicts $pK_a$ values and shows 3D electrostatic surface maps.")
 
 # --- 3. Initialize the ML Model (Cached) ---
 @st.cache_resource
@@ -84,7 +84,7 @@ def generate_html_view(smiles):
 # --- 5. Custom Color Bar Component ---
 def display_color_scale():
     """Generates a native CSS colorbar legend mimicking the charge spectrum."""
-    st.markdown("### 🎨 Charge Distribution Scale")
+    st.markdown("### Charge Distribution Scale")
     st.markdown(
         """
         <div style="display: flex; flex-direction: column; width: 100%; max-width: 500px; margin-bottom: 20px;">
