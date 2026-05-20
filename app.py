@@ -95,13 +95,22 @@ def build_3d_molecule(smiles, df, use_experimental=True):
             
     # Calculate Charges and inject into the B-factor (temperature) column
     AllChem.ComputeGasteigerCharges(mol)
-    for atom in mol.GetAtoms():
+    for i, atom in enumerate(mol.GetAtoms()):
         charge = atom.GetProp('_GasteigerCharge')
         charge = float(charge) if str(charge) != 'nan' else 0.0
             
         pdb_info = Chem.AtomPDBResidueInfo()
         pdb_info.SetTempFactor(charge)
-        atom.SetPDBResidueInfo(pdb_info)
+        
+        # --- THE FIX: PDB format is strict. We must provide dummy names ---
+        # Create a 4-character name like " C1 " or " O2 "
+        atom_name = f"{atom.GetSymbol()}{i}"
+        pdb_info.SetName(atom_name[:4].ljust(4)) 
+        pdb_info.SetResidueName("LIG") # Dummy residue name
+        pdb_info.SetResidueNumber(1)
+        # -----------------------------------------------------------------
+        
+        atom.SetMonomerInfo(pdb_info)
         
     return Chem.MolToPDBBlock(mol)
 
